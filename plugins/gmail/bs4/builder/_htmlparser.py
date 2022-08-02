@@ -79,13 +79,13 @@ class BeautifulSoupHTMLParser(HTMLParser):
     def handle_starttag(self, name, attrs, handle_empty_element=True):
         # XXX namespace
         attr_dict = {}
+        attrvalue = '""'
         for key, value in attrs:
             # Change None attribute values to the empty string
             # for consistency with the other tree builders.
             if value is None:
                 value = ''
             attr_dict[key] = value
-            attrvalue = '""'
         #print "START", name
         tag = self.soup.handle_starttag(name, None, None, attr_dict)
         if tag and tag.is_empty_element and handle_empty_element:
@@ -138,10 +138,7 @@ class BeautifulSoupHTMLParser(HTMLParser):
 
     def handle_entityref(self, name):
         character = EntitySubstitution.HTML_ENTITY_TO_CHARACTER.get(name)
-        if character is not None:
-            data = character
-        else:
-            data = "&%s;" % name
+        data = character if character is not None else f"&{name};"
         self.handle_data(data)
 
     def handle_comment(self, data):
@@ -274,7 +271,7 @@ if major == 3 and minor == 2 and not CONSTRUCTOR_TAKES_STRICT:
             if not rest:
                 attrvalue = None
             elif attrvalue[:1] == '\'' == attrvalue[-1:] or \
-                 attrvalue[:1] == '"' == attrvalue[-1:]:
+                     attrvalue[:1] == '"' == attrvalue[-1:]:
                 attrvalue = attrvalue[1:-1]
             if attrvalue:
                 attrvalue = self.unescape(attrvalue)
@@ -287,7 +284,7 @@ if major == 3 and minor == 2 and not CONSTRUCTOR_TAKES_STRICT:
             if "\n" in self.__starttag_text:
                 lineno = lineno + self.__starttag_text.count("\n")
                 offset = len(self.__starttag_text) \
-                         - self.__starttag_text.rfind("\n")
+                             - self.__starttag_text.rfind("\n")
             else:
                 offset = offset + len(self.__starttag_text)
             if self.strict:

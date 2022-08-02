@@ -69,12 +69,16 @@ def convert_tree(beautiful_soup_tree, makeelement=None):
 def _parse(source, beautifulsoup, makeelement, **bsargs):
     if beautifulsoup is None:
         beautifulsoup = BeautifulSoup
-    if hasattr(beautifulsoup, "HTML_ENTITIES"):  # bs3
-        if 'convertEntities' not in bsargs:
-            bsargs['convertEntities'] = 'html'
-    if hasattr(beautifulsoup, "DEFAULT_BUILDER_FEATURES"):  # bs4
-        if 'features' not in bsargs:
-            bsargs['features'] = 'html.parser'  # use Python html parser
+    if (
+        hasattr(beautifulsoup, "HTML_ENTITIES")
+        and 'convertEntities' not in bsargs
+    ):
+        bsargs['convertEntities'] = 'html'
+    if (
+        hasattr(beautifulsoup, "DEFAULT_BUILDER_FEATURES")
+        and 'features' not in bsargs
+    ):
+        bsargs['features'] = 'html.parser'  # use Python html parser
     tree = beautifulsoup(source, **bsargs)
     root = _convert_tree(tree, makeelement)
     # from ET: wrap the document in a html root element, if necessary
@@ -172,12 +176,7 @@ def _convert_tree(beautiful_soup_tree, makeelement):
         except AttributeError:
             doctype_string = declaration.string
 
-        match = _parse_doctype_declaration(doctype_string)
-        if not match:
-            # Something is wrong if we end up in here. Since soupparser should
-            # tolerate errors, do not raise Exception, just let it pass.
-            pass
-        else:
+        if match := _parse_doctype_declaration(doctype_string):
             external_id, sys_uri = match.groups()
             docinfo = res_root.getroottree().docinfo
             # strip quotes and update DOCTYPE values (any of None, '', '...')
@@ -211,9 +210,7 @@ def _init_node_converters(makeelement):
             handler = converters[type(bs_node)]
         except KeyError:
             handler = converters[type(bs_node)] = find_best_converter(bs_node)
-        if handler is None:
-            return None
-        return handler(bs_node, parent)
+        return None if handler is None else handler(bs_node, parent)
 
     def map_attrs(bs_attrs):
         if isinstance(bs_attrs, dict):  # bs4
@@ -223,7 +220,7 @@ def _init_node_converters(makeelement):
                     v = " ".join(v)
                 attribs[k] = unescape(v)
         else:
-            attribs = dict((k, unescape(v)) for k, v in bs_attrs)
+            attribs = {k: unescape(v) for k, v in bs_attrs}
         return attribs
 
     def append_text(parent, text):

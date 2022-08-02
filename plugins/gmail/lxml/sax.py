@@ -22,10 +22,7 @@ class SaxError(etree.LxmlError):
 
 
 def _getNsTag(tag):
-    if tag[0] == '{':
-        return tuple(tag[1:].split('}', 1))
-    else:
-        return (None, tag)
+    return tuple(tag[1:].split('}', 1)) if tag[0] == '{' else (None, tag)
 
 
 class ElementTreeContentHandler(ContentHandler):
@@ -76,12 +73,11 @@ class ElementTreeContentHandler(ContentHandler):
     def _buildTag(self, ns_name_tuple):
         ns_uri, local_name = ns_name_tuple
         if ns_uri:
-            el_tag = "{%s}%s" % ns_name_tuple
+            return "{%s}%s" % ns_name_tuple
         elif self._default_ns:
-            el_tag = "{%s}%s" % (self._default_ns, local_name)
+            return "{%s}%s" % (self._default_ns, local_name)
         else:
-            el_tag = local_name
-        return el_tag
+            return local_name
 
     def startElementNS(self, ns_name, qname, attributes=None):
         el_name = self._buildTag(ns_name)
@@ -93,10 +89,7 @@ class ElementTreeContentHandler(ContentHandler):
                 iter_attributes = attributes.items()
 
             for name_tuple, value in iter_attributes:
-                if name_tuple[0]:
-                    attr_name = "{%s}%s" % name_tuple
-                else:
-                    attr_name = name_tuple[1]
+                attr_name = "{%s}%s" % name_tuple if name_tuple[0] else name_tuple[1]
                 attrs[attr_name] = value
         else:
             attrs = None
@@ -104,7 +97,7 @@ class ElementTreeContentHandler(ContentHandler):
         element_stack = self._element_stack
         if self._root is None:
             element = self._root = \
-                      self._makeelement(el_name, attrs, self._new_mappings)
+                          self._makeelement(el_name, attrs, self._new_mappings)
             if self._root_siblings and hasattr(element, 'addprevious'):
                 for sibling in self._root_siblings:
                     element.addprevious(sibling)
@@ -127,7 +120,7 @@ class ElementTreeContentHandler(ContentHandler):
         element = self._element_stack.pop()
         el_tag = self._buildTag(ns_name)
         if el_tag != element.tag:
-            raise SaxError("Unexpected element closed: " + el_tag)
+            raise SaxError(f"Unexpected element closed: {el_tag}")
 
     def startElement(self, name, attributes=None):
         if attributes:
@@ -202,8 +195,7 @@ class ElementTreeProducer(object):
 
         new_prefixes = []
         build_qname = self._build_qname
-        attribs = element.items()
-        if attribs:
+        if attribs := element.items():
             attr_values = {}
             attr_qnames = {}
             for attr_ns_name, value in attribs:
@@ -240,7 +232,7 @@ class ElementTreeProducer(object):
         except KeyError:
             prefix = prefixes[ns_uri] = 'ns%02d' % len(prefixes)
             new_prefixes.append( (prefix, ns_uri) )
-        return prefix + ':' + local_name
+        return f'{prefix}:{local_name}'
 
 def saxify(element_or_tree, content_handler):
     """One-shot helper to generate SAX events from an XML tree and fire

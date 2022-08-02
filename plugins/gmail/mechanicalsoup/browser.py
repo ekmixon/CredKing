@@ -51,7 +51,7 @@ class Browser(object):
             for adaptee, adapter in requests_adapters.items():
                 self.session.mount(adaptee, adapter)
 
-        self.soup_config = soup_config or dict()
+        self.soup_config = soup_config or {}
 
     @staticmethod
     def add_soup(response, soup_config):
@@ -81,7 +81,7 @@ class Browser(object):
         # set a default user_agent if not specified
         if user_agent is None:
             requests_ua = requests.utils.default_user_agent()
-            user_agent = '%s (%s/%s)' % (requests_ua, __title__, __version__)
+            user_agent = f'{requests_ua} ({__title__}/{__version__})'
 
         # the requests module uses a case-insensitive dict for session headers
         self.session.headers['User-agent'] = user_agent
@@ -137,8 +137,8 @@ class Browser(object):
             raise ValueError('no URL to submit to')
 
         # read http://www.w3.org/TR/html5/forms.html
-        data = kwargs.pop("data", dict())
-        files = kwargs.pop("files", dict())
+        data = kwargs.pop("data", {})
+        files = kwargs.pop("files", {})
 
         for input in form.select("input[name], button[name]"):
             name = input.get("name")
@@ -169,20 +169,20 @@ class Browser(object):
                 data[name] = value
 
         for textarea in form.select("textarea"):
-            name = textarea.get("name")
-            if not name:
-                continue
-            data[name] = textarea.text
+            if name := textarea.get("name"):
+                data[name] = textarea.text
 
         for select in form.select("select"):
             name = select.get("name")
             if not name:
                 continue
             multiple = "multiple" in select.attrs
-            values = []
-            for i, option in enumerate(select.select("option")):
-                if (i == 0 and not multiple) or "selected" in option.attrs:
-                    values.append(option.get("value", ""))
+            values = [
+                option.get("value", "")
+                for i, option in enumerate(select.select("option"))
+                if (i == 0 and not multiple) or "selected" in option.attrs
+            ]
+
             if multiple:
                 data[name] = values
             elif values:
@@ -221,7 +221,7 @@ class Browser(object):
         """
         with tempfile.NamedTemporaryFile(delete=False) as file:
             file.write(soup.encode())
-        webbrowser.open('file://' + file.name)
+        webbrowser.open(f'file://{file.name}')
 
     def close(self):
         """Close the current session, if still open."""

@@ -143,16 +143,8 @@ class ElementMaker(object):
 
     def __init__(self, typemap=None,
                  namespace=None, nsmap=None, makeelement=None):
-        if namespace is not None:
-            self._namespace = '{' + namespace + '}'
-        else:
-            self._namespace = None
-
-        if nsmap:
-            self._nsmap = dict(nsmap)
-        else:
-            self._nsmap = None
-
+        self._namespace = '{' + namespace + '}' if namespace is not None else None
+        self._nsmap = dict(nsmap) if nsmap else None
         if makeelement is not None:
             assert callable(makeelement)
             self._makeelement = makeelement
@@ -161,11 +153,7 @@ class ElementMaker(object):
 
         # initialize type map for this element factory
 
-        if typemap:
-            typemap = dict(typemap)
-        else:
-            typemap = {}
-
+        typemap = dict(typemap) if typemap else {}
         def add_text(elem, item):
             try:
                 elem[-1].tail = (elem[-1].tail or "") + item
@@ -187,10 +175,8 @@ class ElementMaker(object):
         def add_dict(elem, item):
             attrib = elem.attrib
             for k, v in item.items():
-                if isinstance(v, basestring):
-                    attrib[k] = v
-                else:
-                    attrib[k] = typemap[type(v)](None, v)
+                attrib[k] = v if isinstance(v, basestring) else typemap[type(v)](None, v)
+
         if dict not in typemap:
             typemap[dict] = add_dict
 
@@ -221,8 +207,7 @@ class ElementMaker(object):
                 else:
                     raise TypeError("bad argument type: %s(%r)" %
                                     (type(item).__name__, item))
-            v = t(elem, item)
-            if v:
+            if v := t(elem, item):
                 typemap.get(type(v))(elem, v)
 
         return elem

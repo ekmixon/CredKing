@@ -50,6 +50,7 @@ Python, ElementTree compatible implementation that supports a simple
 form of custom URL resolvers.
 """
 
+
 from lxml import etree
 try:
     from urlparse import urljoin
@@ -61,12 +62,9 @@ except ImportError:
 
 XINCLUDE = "{http://www.w3.org/2001/XInclude}"
 
-XINCLUDE_INCLUDE = XINCLUDE + "include"
-XINCLUDE_FALLBACK = XINCLUDE + "fallback"
-XINCLUDE_ITER_TAG = XINCLUDE + "*"
-
-##
-# Fatal include error.
+XINCLUDE_INCLUDE = f"{XINCLUDE}include"
+XINCLUDE_FALLBACK = f"{XINCLUDE}fallback"
+XINCLUDE_ITER_TAG = f"{XINCLUDE}*"
 
 class FatalIncludeError(etree.LxmlSyntaxError):
     pass
@@ -85,15 +83,14 @@ class FatalIncludeError(etree.LxmlSyntaxError):
 # @throws IOError If the loader fails to load the resource.
 
 def default_loader(href, parse, encoding=None):
-    file = open(href, 'rb')
-    if parse == "xml":
-        data = etree.parse(file).getroot()
-    else:
-        data = file.read()
-        if not encoding:
-            encoding = 'utf-8'
-        data = data.decode(encoding)
-    file.close()
+    with open(href, 'rb') as file:
+        if parse == "xml":
+            data = etree.parse(file).getroot()
+        else:
+            data = file.read()
+            if not encoding:
+                encoding = 'utf-8'
+            data = data.decode(encoding)
     return data
 
 ##
@@ -104,10 +101,7 @@ def _lxml_default_loader(href, parse, encoding=None, parser=None):
     if parse == "xml":
         data = etree.parse(href, parser).getroot()
     else:
-        if "://" in href:
-            f = urlopen(href)
-        else:
-            f = open(href, 'rb')
+        f = urlopen(href) if "://" in href else open(href, 'rb')
         data = f.read()
         f.close()
         if not encoding:

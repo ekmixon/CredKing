@@ -76,9 +76,7 @@ _is_possibly_malicious_scheme = re.compile(
     r'(?:javascript|jscript|livescript|vbscript|data|about|mocha):',
     re.I).search
 def _is_javascript_scheme(s):
-    if _is_image_dataurl(s):
-        return None
-    return _is_possibly_malicious_scheme(s)
+    return None if _is_image_dataurl(s) else _is_possibly_malicious_scheme(s)
 
 _substitute_whitespace = re.compile(r'[\s\x00-\x08\x0B\x0C\x0E-\x19]+').sub
 # FIXME: should data: be blocked?
@@ -330,20 +328,20 @@ class Cleaner(object):
             # We must get rid of included stylesheets if Javascript is not
             # allowed, as you can put Javascript in them
             for el in list(doc.iter('link')):
-                if 'stylesheet' in el.get('rel', '').lower():
-                    # Note this kills alternate stylesheets as well
-                    if not self.allow_element(el):
-                        el.drop_tree()
+                if 'stylesheet' in el.get(
+                    'rel', ''
+                ).lower() and not self.allow_element(el):
+                    el.drop_tree()
         if self.meta:
             kill_tags.add('meta')
         if self.page_structure:
             remove_tags.update(('head', 'html', 'title'))
         if self.embedded:
+            found_parent = False
             # FIXME: is <layer> really embedded?
             # We should get rid of any <param> tags not inside <applet>;
             # These are not really valid anyway.
             for el in list(doc.iter('param')):
-                found_parent = False
                 parent = el.getparent()
                 while parent is not None and parent.tag not in ('applet', 'object'):
                     parent = parent.getparent()
@@ -401,11 +399,7 @@ class Cleaner(object):
                     "It does not make sense to pass in both allow_tags and remove_unknown_tags")
             allow_tags = set(defs.tags)
         if allow_tags:
-            bad = []
-            for el in doc.iter():
-                if el.tag not in allow_tags:
-                    bad.append(el)
-            if bad:
+            if bad := [el for el in doc.iter() if el.tag not in allow_tags]:
                 if bad[0] is doc:
                     el = bad.pop(0)
                     el.tag = 'div'
@@ -417,10 +411,9 @@ class Cleaner(object):
                 if not self.allow_follow(el):
                     rel = el.get('rel')
                     if rel:
-                        if ('nofollow' in rel
-                                and ' nofollow ' in (' %s ' % rel)):
+                        if 'nofollow' in rel and ' nofollow ' in f' {rel} ':
                             continue
-                        rel = '%s nofollow' % rel
+                        rel = f'{rel} nofollow'
                     else:
                         rel = 'nofollow'
                     el.set('rel', rel)
@@ -445,9 +438,7 @@ class Cleaner(object):
             return True
         else:
             url = el.get(attr)
-            if not url:
-                return False
-            return self.allow_embedded_url(el, url)
+            return self.allow_embedded_url(el, url) if url else False
 
     def allow_embedded_url(self, el, url):
         if (self.whitelist_tags is not None
@@ -455,11 +446,7 @@ class Cleaner(object):
             return False
         scheme, netloc, path, query, fragment = urlsplit(url)
         netloc = netloc.lower().split(':', 1)[0]
-        if scheme not in ('http', 'https'):
-            return False
-        if netloc in self.host_whitelist:
-            return True
-        return False
+        return netloc in self.host_whitelist if scheme in ('http', 'https') else False
 
     def kill_conditional_comments(self, doc):
         """
@@ -473,20 +460,14 @@ class Cleaner(object):
             etree.Comment)                
 
     def _kill_elements(self, doc, condition, iterate=None):
-        bad = []
-        for el in doc.iter(iterate):
-            if condition(el):
-                bad.append(el)
+        bad = [el for el in doc.iter(iterate) if condition(el)]
         for el in bad:
             el.drop_tree()
 
     def _remove_javascript_link(self, link):
         # links like "j a v a s c r i p t:" might be interpreted in IE
         new = _substitute_whitespace('', link)
-        if _is_javascript_scheme(new):
-            # FIXME: should this be None to delete?
-            return ''
-        return link
+        return '' if _is_javascript_scheme(new) else link
 
     _substitute_comments = re.compile(r'/\*.*?\*/', re.S).sub
 
@@ -505,18 +486,11 @@ class Cleaner(object):
         style = style.replace('\\', '')
         style = _substitute_whitespace('', style)
         style = style.lower()
-        if 'javascript:' in style:
-            return True
-        if 'expression(' in style:
-            return True
-        return False
+        return True if 'javascript:' in style else 'expression(' in style
 
     def clean_html(self, html):
         result_type = type(html)
-        if isinstance(html, basestring):
-            doc = fromstring(html)
-        else:
-            doc = copy.deepcopy(html)
+        doc = fromstring(html) if isinstance(html, basestring) else copy.deepcopy(html)
         self(doc)
         return _transform_result(result_type, doc)
 
@@ -563,8 +537,7 @@ def autolink(el, link_regexes=_link_regexes,
     """
     if el.tag in avoid_elements:
         return
-    class_name = el.get('class')
-    if class_name:
+    if class_name := el.get('class'):
         class_name = class_name.split()
         for match_class in avoid_classes:
             if match_class in class_name:
@@ -648,10 +621,7 @@ def _link_text(text, link_regexes, avoid_hosts, factory):
                 
 def autolink_html(html, *args, **kw):
     result_type = type(html)
-    if isinstance(html, basestring):
-        doc = fromstring(html)
-    else:
-        doc = copy.deepcopy(html)
+    doc = fromstring(html) if isinstance(html, basestring) else copy.deepcopy(html)
     autolink(doc, *args, **kw)
     return _transform_result(result_type, doc)
 
@@ -685,14 +655,9 @@ def word_break(el, max_width=40,
     #   http://www.cs.tut.fi/~jkorpela/html/nobr.html
     if el.tag in _avoid_word_break_elements:
         return
-    class_name = el.get('class')
-    if class_name:
-        dont_break = False
+    if class_name := el.get('class'):
         class_name = class_name.split()
-        for avoid in avoid_classes:
-            if avoid in class_name:
-                dont_break = True
-                break
+        dont_break = any(avoid in class_name for avoid in avoid_classes)
         if dont_break:
             return
     if el.text:
@@ -726,8 +691,7 @@ def _insert_break(word, width, break_character):
     result = ''
     while len(word) > width:
         start = word[:width]
-        breaks = list(_break_prefer_re.finditer(start))
-        if breaks:
+        if breaks := list(_break_prefer_re.finditer(start)):
             last_break = breaks[-1]
             # Only walk back up to 10 characters to find a nice break:
             if last_break.end() > width-10:

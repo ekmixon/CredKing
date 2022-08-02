@@ -530,7 +530,7 @@ class TestNextOperations(ProximityTest):
 
     def test_next_generator(self):
         start = self.tree.find(text="Two")
-        successors = [node for node in start.next_elements]
+        successors = list(start.next_elements)
         # There are two successors: the final <b> tag and its text contents.
         tag, contents = successors
         self.assertEqual(tag['id'], '3')
@@ -576,7 +576,7 @@ class TestPreviousOperations(ProximityTest):
 
     def test_previous_generator(self):
         start = self.tree.find(text="One")
-        predecessors = [node for node in start.previous_elements]
+        predecessors = list(start.previous_elements)
 
         # There are four predecessors: the <b> tag containing "One"
         # the <body> tag, the <head> tag, and the <html> tag.
@@ -1110,7 +1110,7 @@ class TestTreeModification(SoupTest):
 </body>
 <script>baz</script>
 </html>""")
-        [soup.script.extract() for i in soup.find_all("script")]
+        [soup.script.extract() for _ in soup.find_all("script")]
         self.assertEqual("<body>\n\n<a></a>\n</body>", str(soup.body))
 
 
@@ -1704,10 +1704,10 @@ class TestSoupSelector(TreeTest):
         el_ids = [el['id'] for el in self.soup.select(selector, **kwargs)]
         el_ids.sort()
         expected_ids.sort()
-        self.assertEqual(expected_ids, el_ids,
-            "Selector %s, expected [%s], got [%s]" % (
-                selector, ', '.join(expected_ids), ', '.join(el_ids)
-            )
+        self.assertEqual(
+            expected_ids,
+            el_ids,
+            f"Selector {selector}, expected [{', '.join(expected_ids)}], got [{', '.join(el_ids)}]",
         )
 
     assertSelect = assertSelects

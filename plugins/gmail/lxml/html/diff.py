@@ -136,15 +136,13 @@ def markup_serialize_tokens(tokens, markup_func):
     markup_func around text to add annotations.
     """
     for token in tokens:
-        for pre in token.pre_tags:
-            yield pre
+        yield from token.pre_tags
         html = token.html()
         html = markup_func(html, token.annotation)
         if token.trailing_whitespace:
             html += token.trailing_whitespace
         yield html
-        for post in token.post_tags:
-            yield post
+        yield from token.post_tags
 
 
 ############################################################
@@ -198,10 +196,10 @@ def htmldiff_tokens(html1_tokens, html2_tokens):
         if command == 'equal':
             result.extend(expand_tokens(html2_tokens[j1:j2], equal=True))
             continue
-        if command == 'insert' or command == 'replace':
+        if command in ['insert', 'replace']:
             ins_tokens = expand_tokens(html2_tokens[j1:j2])
             merge_insert(ins_tokens, result)
-        if command == 'delete' or command == 'replace':
+        if command in ['delete', 'replace']:
             del_tokens = expand_tokens(html1_tokens[i1:i2])
             merge_delete(del_tokens, result)
     # If deletes were inserted directly as <del> then we'd have an
@@ -217,15 +215,13 @@ def expand_tokens(tokens, equal=False):
     text for the data in the tokens.
     """
     for token in tokens:
-        for pre in token.pre_tags:
-            yield pre
+        yield from token.pre_tags
         if not equal or not token.hide_when_equal:
             if token.trailing_whitespace:
                 yield token.html() + token.trailing_whitespace
             else:
                 yield token.html()
-        for post in token.post_tags:
-            yield post
+        yield from token.post_tags
 
 def merge_insert(ins_chunks, doc):
     """ doc is the already-handled document (as a list of text chunks);
@@ -380,10 +376,7 @@ def locate_unbalanced_start(unbalanced_start, pre_delete, post_delete):
     document.  If this doesn't work out, we just throw away
     unbalanced_start without doing anything.
     """
-    while 1:
-        if not unbalanced_start:
-            # We have totally succeeded in finding the position
-            break
+    while 1 and unbalanced_start:
         finding = unbalanced_start[0]
         finding_name = finding.split()[0].strip('<>')
         if not post_delete:
@@ -411,10 +404,7 @@ def locate_unbalanced_start(unbalanced_start, pre_delete, post_delete):
 def locate_unbalanced_end(unbalanced_end, pre_delete, post_delete):
     """ like locate_unbalanced_start, except handling end tags and
     possibly moving the point earlier in the document.  """
-    while 1:
-        if not unbalanced_end:
-            # Success
-            break
+    while 1 and unbalanced_end:
         finding = unbalanced_end[-1]
         finding_name = finding.split()[0].strip('<>/')
         if not pre_delete:
@@ -424,7 +414,7 @@ def locate_unbalanced_end(unbalanced_end, pre_delete, post_delete):
             # A word or a start tag
             break
         name = next.split()[0].strip('<>/')
-        if name == 'ins' or name == 'del':
+        if name in ['ins', 'del']:
             # Can't move into an insert or delete
             break
         if name == finding_name:
@@ -454,16 +444,8 @@ class token(_unicode):
     def __new__(cls, text, pre_tags=None, post_tags=None, trailing_whitespace=""):
         obj = _unicode.__new__(cls, text)
 
-        if pre_tags is not None:
-            obj.pre_tags = pre_tags
-        else:
-            obj.pre_tags = []
-
-        if post_tags is not None:
-            obj.post_tags = post_tags
-        else:
-            obj.post_tags = []
-
+        obj.pre_tags = pre_tags if pre_tags is not None else []
+        obj.post_tags = post_tags if post_tags is not None else []
         obj.trailing_whitespace = trailing_whitespace
 
         return obj
@@ -483,10 +465,14 @@ class tag_token(token):
 
     def __new__(cls, tag, data, html_repr, pre_tags=None, 
                 post_tags=None, trailing_whitespace=""):
-        obj = token.__new__(cls, "%s: %s" % (type, data), 
-                            pre_tags=pre_tags, 
-                            post_tags=post_tags, 
-                            trailing_whitespace=trailing_whitespace)
+        obj = token.__new__(
+            cls,
+            f"{type}: {data}",
+            pre_tags=pre_tags,
+            post_tags=post_tags,
+            trailing_whitespace=trailing_whitespace,
+        )
+
         obj.tag = tag
         obj.data = data
         obj.html_repr = html_repr
@@ -511,7 +497,7 @@ class href_token(token):
     hide_when_equal = True
 
     def html(self):
-        return ' Link: %s' % self
+        return f' Link: {self}'
 
 def tokenize(html, include_hrefs=True):
     """
@@ -528,10 +514,7 @@ def tokenize(html, include_hrefs=True):
 
     If include_hrefs is true, then the href attribute of <a> tags is
     included as a special kind of diffable token."""
-    if etree.iselement(html):
-        body_el = html
-    else:
-        body_el = parse_html(html, cleanup=True)
+    body_el = html if etree.iselement(html) else parse_html(html, cleanup=True)
     # Then we split the document into text chunks for each tag, word, and end tag:
     chunks = flatten_el(body_el, skip_tag=True, include_hrefs=include_hrefs)
     # Finally re-joining them into token objects:
@@ -558,11 +541,9 @@ def cleanup_html(html):
     """ This 'cleans' the HTML, meaning that any page structure is removed
     (only the contents of <body> are used, if there is any <body).
     Also <ins> and <del> tags are removed.  """
-    match = _body_re.search(html)
-    if match:
+    if match := _body_re.search(html):
         html = html[match.end():]
-    match = _end_body_re.search(html)
-    if match:
+    if match := _end_body_re.search(html):
         html = html[:match.start()]
     html = _ins_del_re.sub('', html)
     return html
@@ -575,7 +556,7 @@ def split_trailing_whitespace(word):
     This function takes a word, such as 'test\n\n' and returns ('test','\n\n')
     """
     stripped_length = len(word.rstrip())
-    return word[0:stripped_length], word[stripped_length:]
+    return word[:stripped_length], word[stripped_length:]
 
 
 def fixup_chunks(chunks):
@@ -695,8 +676,7 @@ def flatten_el(el, include_hrefs, skip_tag=False):
     for word in start_words:
         yield html_escape(word)
     for child in el:
-        for item in flatten_el(child, include_hrefs=include_hrefs):
-            yield item
+        yield from flatten_el(child, include_hrefs=include_hrefs)
     if el.tag == 'a' and el.get('href') and include_hrefs:
         yield ('href', el.get('href'))
     if not skip_tag:
@@ -710,11 +690,7 @@ split_words_re = re.compile(r'\S+(?:\s+|$)', re.U)
 def split_words(text):
     """ Splits some text into words. Includes trailing whitespace
     on each word when appropriate.  """
-    if not text or not text.strip():
-        return []
-
-    words = split_words_re.findall(text)
-    return words
+    return [] if not text or not text.strip() else split_words_re.findall(text)
 
 start_whitespace_re = re.compile(r'^[ \t\n\r]')
 
@@ -729,11 +705,8 @@ def start_tag(el):
 def end_tag(el):
     """ The text representation of an end tag for a tag.  Includes
     trailing whitespace when appropriate.  """
-    if el.tail and start_whitespace_re.search(el.tail):
-        extra = ' '
-    else:
-        extra = ''
-    return '</%s>%s' % (el.tag, extra)
+    extra = ' ' if el.tail and start_whitespace_re.search(el.tail) else ''
+    return f'</{el.tag}>{extra}'
 
 def is_word(tok):
     return not tok.startswith('<')
@@ -762,20 +735,19 @@ def serialize_html_fragment(el, skip_outer=False):
     assert not isinstance(el, basestring), (
         "You should pass in an element, not a string like %r" % el)
     html = etree.tostring(el, method="html", encoding=_unicode)
-    if skip_outer:
-        # Get rid of the extra starting tag:
-        html = html[html.find('>')+1:]
-        # Get rid of the extra end tag:
-        html = html[:html.rfind('<')]
-        return html.strip()
-    else:
+    if not skip_outer:
         return html
+    # Get rid of the extra starting tag:
+    html = html[html.find('>')+1:]
+    # Get rid of the extra end tag:
+    html = html[:html.rfind('<')]
+    return html.strip()
 
 def _fixup_ins_del_tags(doc):
     """fixup_ins_del_tags that works on an lxml document in-place
     """
     for tag in ['ins', 'del']:
-        for el in doc.xpath('descendant-or-self::%s' % tag):
+        for el in doc.xpath(f'descendant-or-self::{tag}'):
             if not _contains_block_level_tag(el):
                 continue
             _move_el_inside_block(el, tag=tag)
@@ -787,10 +759,7 @@ def _contains_block_level_tag(el):
     """
     if el.tag in block_level_tags or el.tag in block_level_container_tags:
         return True
-    for child in el:
-        if _contains_block_level_tag(child):
-            return True
-    return False
+    return any(_contains_block_level_tag(child) for child in el)
 
 def _move_el_inside_block(el, tag):
     """ helper for _fixup_ins_del_tags; actually takes the <ins> etc tags
@@ -836,27 +805,22 @@ def _merge_element_contents(el):
     if el.tail:
         if not len(el):
             text += el.tail
+        elif el[-1].tail:
+            el[-1].tail += el.tail
         else:
-            if el[-1].tail:
-                el[-1].tail += el.tail
-            else:
-                el[-1].tail = el.tail
+            el[-1].tail = el.tail
     index = parent.index(el)
     if text:
-        if index == 0:
-            previous = None
-        else:
-            previous = parent[index-1]
+        previous = None if index == 0 else parent[index-1]
         if previous is None:
             if parent.text:
                 parent.text += text
             else:
                 parent.text = text
+        elif previous.tail:
+            previous.tail += text
         else:
-            if previous.tail:
-                previous.tail += text
-            else:
-                previous.tail = text
+            previous.tail = text
     parent[index:index+1] = el.getchildren()
 
 class InsensitiveSequenceMatcher(difflib.SequenceMatcher):

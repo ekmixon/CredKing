@@ -51,20 +51,17 @@ def main(args=None):
             result += '\n'
         sys.stdout.write(result)
     else:
-        f = open(options.output, 'wb')
-        f.write(result)
-        f.close()
+        with open(options.output, 'wb') as f:
+            f.write(result)
 
 def read_file(filename):
     if filename == '-':
         c = sys.stdin.read()
     elif not os.path.exists(filename):
-        raise OSError(
-            "Input file %s does not exist" % filename)
+        raise OSError(f"Input file {filename} does not exist")
     else:
-        f = open(filename, 'rb')
-        c = f.read()
-        f.close()
+        with open(filename, 'rb') as f:
+            c = f.read()
     return c
 
 body_start_re = re.compile(
@@ -74,12 +71,10 @@ body_end_re = re.compile(
     
 def split_body(html):
     pre = post = ''
-    match = body_start_re.search(html)
-    if match:
+    if match := body_start_re.search(html):
         pre = html[:match.end()]
         html = html[match.end():]
-    match = body_end_re.search(html)
-    if match:
+    if match := body_end_re.search(html):
         post = html[match.start():]
         html = html[:match.start()]
     return pre, html, post

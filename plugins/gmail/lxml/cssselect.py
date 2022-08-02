@@ -39,8 +39,8 @@ class LxmlTranslator(external_cssselect.GenericTranslator):
                 % function.arguments)
         value = function.arguments[0].value
         return xpath.add_condition(
-            'contains(__lxml_internal_css:lower-case(string(.)), %s)'
-            % self.xpath_literal(value.lower()))
+            f'contains(__lxml_internal_css:lower-case(string(.)), {self.xpath_literal(value.lower())})'
+        )
 
 
 class LxmlHTMLTranslator(LxmlTranslator, external_cssselect.HTMLTranslator):

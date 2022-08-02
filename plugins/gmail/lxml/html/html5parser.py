@@ -47,9 +47,7 @@ else:
 
 def _find_tag(tree, tag):
     elem = tree.find(tag)
-    if elem is not None:
-        return elem
-    return tree.find('{%s}%s' % (XHTML_NAMESPACE, tag))
+    return tree.find('{%s}%s' % (XHTML_NAMESPACE, tag)) if elem is None else elem
 
 
 def document_fromstring(html, guess_charset=None, parser=None):
@@ -101,12 +99,11 @@ def fragments_fromstring(html, no_leading_text=False,
     if guess_charset is not None:
         options['useChardet'] = guess_charset
     children = parser.parseFragment(html, 'div', **options)
-    if children and isinstance(children[0], _strings):
-        if no_leading_text:
-            if children[0].strip():
-                raise etree.ParserError('There is leading text: %r' %
-                                        children[0])
-            del children[0]
+    if children and isinstance(children[0], _strings) and no_leading_text:
+        if children[0].strip():
+            raise etree.ParserError('There is leading text: %r' %
+                                    children[0])
+        del children[0]
     return children
 
 
@@ -201,10 +198,7 @@ def fromstring(html, guess_charset=None, parser=None):
     # Now we have a body which represents a bunch of tags which have the
     # content that was passed in.  We will create a fake container, which
     # is the body tag, except <body> implies too much structure.
-    if _contains_block_level_tag(body):
-        body.tag = 'div'
-    else:
-        body.tag = 'span'
+    body.tag = 'div' if _contains_block_level_tag(body) else 'span'
     return body
 
 

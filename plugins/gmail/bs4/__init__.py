@@ -146,7 +146,7 @@ class BeautifulSoup(Tag):
             warnings.warn("You provided Unicode markup but also provided a value for from_encoding. Your from_encoding will be ignored.")
             from_encoding = None
 
-        if len(kwargs) > 0:
+        if kwargs:
             arg = list(kwargs.keys()).pop()
             raise TypeError(
                 "__init__() got an unexpected keyword argument '%s'" % arg)
@@ -164,13 +164,11 @@ class BeautifulSoup(Tag):
                     "requested: %s. Do you need to install a parser library?"
                     % ",".join(features))
             builder = builder_class()
-            if not (original_features == builder.NAME or
-                    original_features in builder.ALTERNATE_NAMES):
-                if builder.is_xml:
-                    markup_type = "XML"
-                else:
-                    markup_type = "HTML"
-
+            if (
+                original_features != builder.NAME
+                and original_features not in builder.ALTERNATE_NAMES
+            ):
+                markup_type = "XML" if builder.is_xml else "HTML"
                 caller = traceback.extract_stack()[0]
                 filename = caller[0]
                 line_number = caller[1]
@@ -190,8 +188,10 @@ class BeautifulSoup(Tag):
         if hasattr(markup, 'read'):        # It's a file-type object.
             markup = markup.read()
         elif len(markup) <= 256 and (
-                (isinstance(markup, bytes) and not b'<' in markup)
-                or (isinstance(markup, str) and not '<' in markup)
+            isinstance(markup, bytes)
+            and b'<' not in markup
+            or isinstance(markup, str)
+            and '<' not in markup
         ):
             # Print out warnings for a couple beginner problems
             # involving passing non-markup to Beautiful Soup.
@@ -269,18 +269,20 @@ class BeautifulSoup(Tag):
         else:
             return
 
-        if any(markup.startswith(prefix) for prefix in cant_start_with):
-            if not space in markup:
-                if isinstance(markup, bytes):
-                    decoded_markup = markup.decode('utf-8', 'replace')
-                else:
-                    decoded_markup = markup
-                warnings.warn(
-                    '"%s" looks like a URL. Beautiful Soup is not an'
-                    ' HTTP client. You should probably use an HTTP client like'
-                    ' requests to get the document behind the URL, and feed'
-                    ' that document to Beautiful Soup.' % decoded_markup
-                )
+        if (
+            any(markup.startswith(prefix) for prefix in cant_start_with)
+            and space not in markup
+        ):
+            if isinstance(markup, bytes):
+                decoded_markup = markup.decode('utf-8', 'replace')
+            else:
+                decoded_markup = markup
+            warnings.warn(
+                '"%s" looks like a URL. Beautiful Soup is not an'
+                ' HTTP client. You should probably use an HTTP client like'
+                ' requests to get the document behind the URL, and feed'
+                ' that document to Beautiful Soup.' % decoded_markup
+            )
 
     def _feed(self):
         # Convert the document to Unicode.
@@ -335,34 +337,27 @@ class BeautifulSoup(Tag):
             self.preserve_whitespace_tag_stack.append(tag)
 
     def endData(self, containerClass=NavigableString):
-        if self.current_data:
-            current_data = ''.join(self.current_data)
+        if not self.current_data:
+            return
+        current_data = ''.join(self.current_data)
             # If whitespace is not preserved, and this string contains
             # nothing but ASCII spaces, replace it with a single space
             # or newline.
-            if not self.preserve_whitespace_tag_stack:
-                strippable = True
-                for i in current_data:
-                    if i not in self.ASCII_SPACES:
-                        strippable = False
-                        break
-                if strippable:
-                    if '\n' in current_data:
-                        current_data = '\n'
-                    else:
-                        current_data = ' '
+        if not self.preserve_whitespace_tag_stack:
+            strippable = all(i in self.ASCII_SPACES for i in current_data)
+            if strippable:
+                current_data = '\n' if '\n' in current_data else ' '
+        # Reset the data collector.
+        self.current_data = []
 
-            # Reset the data collector.
-            self.current_data = []
-
-            # Should we add this string to the tree at all?
-            if self.parse_only and len(self.tagStack) <= 1 and \
+        # Should we add this string to the tree at all?
+        if self.parse_only and len(self.tagStack) <= 1 and \
                    (not self.parse_only.text or \
                     not self.parse_only.search(current_data)):
-                return
+            return
 
-            o = containerClass(current_data)
-            self.object_was_parsed(o)
+        o = containerClass(current_data)
+        self.object_was_parsed(o)
 
     def object_was_parsed(self, o, parent=None, most_recent_element=None):
         """Add an object to the parse tree."""
@@ -486,17 +481,14 @@ class BeautifulSoup(Tag):
         To get Unicode, pass None for encoding."""
 
         if self.is_xml:
-            # Print the XML declaration
-            encoding_part = ''
-            if eventual_encoding != None:
+            if eventual_encoding is None:
+                encoding_part = ''
+            else:
                 encoding_part = ' encoding="%s"' % eventual_encoding
             prefix = '<?xml version="1.0"%s?>\n' % encoding_part
         else:
             prefix = ''
-        if not pretty_print:
-            indent_level = None
-        else:
-            indent_level = 0
+        indent_level = 0 if pretty_print else None
         return prefix + super(BeautifulSoup, self).decode(
             indent_level, eventual_encoding, formatter)
 

@@ -63,7 +63,7 @@ class HTML5TreeBuilder(HTMLTreeBuilder):
             warnings.warn("You provided a value for parse_only, but the html5lib tree builder doesn't support parse_only. The entire document will be parsed.")
         parser = html5lib.HTMLParser(tree=self.create_treebuilder)
 
-        extra_kwargs = dict()
+        extra_kwargs = {}
         if not isinstance(markup, str):
             if new_html5lib:
                 extra_kwargs['override_encoding'] = self.user_specified_encoding
@@ -92,7 +92,7 @@ class HTML5TreeBuilder(HTMLTreeBuilder):
 
     def test_fragment_to_document(self, fragment):
         """See `TreeBuilder`."""
-        return '<html><head></head><body>%s</body></html>' % fragment
+        return f'<html><head></head><body>{fragment}</body></html>'
 
 
 class TreeBuilderForHtml5lib(treebuilder_base.TreeBuilder):
@@ -151,32 +151,31 @@ class TreeBuilderForHtml5lib(treebuilder_base.TreeBuilder):
             if isinstance(element, Doctype):
                 m = doctype_re.match(element)
                 if m:
-                    name = m.group(1)
+                    name = m[1]
                     if m.lastindex > 1:
-                        publicId = m.group(2) or ""
-                        systemId = m.group(3) or m.group(4) or ""
+                        publicId = m[2] or ""
+                        systemId = m[3] or m[4] or ""
                         rv.append("""|%s<!DOCTYPE %s "%s" "%s">""" %
                                   (' ' * indent, name, publicId, systemId))
                     else:
-                        rv.append("|%s<!DOCTYPE %s>" % (' ' * indent, name))
+                        rv.append(f"|{' ' * indent}<!DOCTYPE {name}>")
                 else:
-                    rv.append("|%s<!DOCTYPE >" % (' ' * indent,))
+                    rv.append(f"|{' ' * indent}<!DOCTYPE >")
             elif isinstance(element, Comment):
-                rv.append("|%s<!-- %s -->" % (' ' * indent, element))
+                rv.append(f"|{' ' * indent}<!-- {element} -->")
             elif isinstance(element, NavigableString):
                 rv.append("|%s\"%s\"" % (' ' * indent, element))
             else:
                 if element.namespace:
-                    name = "%s %s" % (prefixes[element.namespace],
-                                      element.name)
+                    name = f"{prefixes[element.namespace]} {element.name}"
                 else:
                     name = element.name
-                rv.append("|%s<%s>" % (' ' * indent, name))
+                rv.append(f"|{' ' * indent}<{name}>")
                 if element.attrs:
                     attributes = []
                     for name, value in list(element.attrs.items()):
                         if isinstance(name, NamespacedAttribute):
-                            name = "%s %s" % (prefixes[name.namespace], name.name)
+                            name = f"{prefixes[name.namespace]} {name.name}"
                         if isinstance(value, list):
                             value = " ".join(value)
                         attributes.append((name, value))
@@ -186,6 +185,7 @@ class TreeBuilderForHtml5lib(treebuilder_base.TreeBuilder):
                 indent += 2
                 for child in element.children:
                     serializeElement(child, indent)
+
         serializeElement(element, 0)
 
         return "\n".join(rv)
@@ -200,13 +200,16 @@ class AttrList(object):
         # If this attribute is a multi-valued attribute for this element,
         # turn its value into a list.
         list_attr = HTML5TreeBuilder.cdata_list_attributes
-        if (name in list_attr['*']
-            or (self.element.name in list_attr
-                and name in list_attr[self.element.name])):
-            # A node that is being cloned may have already undergone
-            # this procedure.
-            if not isinstance(value, list):
-                value = whitespace_re.split(value)
+        if (
+            (
+                name in list_attr['*']
+                or (
+                    self.element.name in list_attr
+                    and name in list_attr[self.element.name]
+                )
+            )
+        ) and not isinstance(value, list):
+            value = whitespace_re.split(value)
         self.element[name] = value
     def items(self):
         return list(self.attrs.items())
@@ -282,32 +285,30 @@ class Element(treebuilder_base.Node):
                 most_recent_element=most_recent_element)
 
     def getAttributes(self):
-        if isinstance(self.element, Comment):
-            return {}
-        return AttrList(self.element)
+        return {} if isinstance(self.element, Comment) else AttrList(self.element)
 
     def setAttributes(self, attributes):
 
-        if attributes is not None and len(attributes) > 0:
+        if attributes is None or len(attributes) <= 0:
+            return
+        converted_attributes = []
+        for name, value in list(attributes.items()):
+            if isinstance(name, tuple):
+                new_name = NamespacedAttribute(*name)
+                del attributes[name]
+                attributes[new_name] = value
 
-            converted_attributes = []
-            for name, value in list(attributes.items()):
-                if isinstance(name, tuple):
-                    new_name = NamespacedAttribute(*name)
-                    del attributes[name]
-                    attributes[new_name] = value
+        self.soup.builder._replace_cdata_list_attribute_values(
+            self.name, attributes)
+        for name, value in list(attributes.items()):
+            self.element[name] = value
 
-            self.soup.builder._replace_cdata_list_attribute_values(
-                self.name, attributes)
-            for name, value in list(attributes.items()):
-                self.element[name] = value
-
-            # The attributes may contain variables that need substitution.
-            # Call set_up_substitutions manually.
-            #
-            # The Tag constructor called this method when the Tag was created,
-            # but we just set/changed the attributes, so call it again.
-            self.soup.builder.set_up_substitutions(self.element)
+        # The attributes may contain variables that need substitution.
+        # Call set_up_substitutions manually.
+        #
+        # The Tag constructor called this method when the Tag was created,
+        # but we just set/changed the attributes, so call it again.
+        self.soup.builder.set_up_substitutions(self.element)
     attributes = property(getAttributes, setAttributes)
 
     def insertText(self, data, insertBefore=None):
@@ -360,10 +361,10 @@ class Element(treebuilder_base.Node):
             # Set the first child's previous_element and previous_sibling
             # to elements within the new parent
             first_child = to_append[0]
-            if new_parents_last_descendant:
-                first_child.previous_element = new_parents_last_descendant
-            else:
-                first_child.previous_element = new_parent_element
+            first_child.previous_element = (
+                new_parents_last_descendant or new_parent_element
+            )
+
             first_child.previous_sibling = new_parents_last_child
             if new_parents_last_descendant:
                 new_parents_last_descendant.next_element = first_child
@@ -409,7 +410,7 @@ class Element(treebuilder_base.Node):
         return self.element.contents
 
     def getNameTuple(self):
-        if self.namespace == None:
+        if self.namespace is None:
             return namespaces["html"], self.name
         else:
             return self.namespace, self.name

@@ -71,19 +71,16 @@ def xpath_tokenizer(pattern, namespaces=None):
     default_namespace = namespaces.get(None) if namespaces else None
     for token in xpath_tokenizer_re.findall(pattern):
         tag = token[1]
-        if tag and tag[0] != "{":
-            if ":" in tag:
-                prefix, uri = tag.split(":", 1)
-                try:
-                    if not namespaces:
-                        raise KeyError
-                    yield token[0], "{%s}%s" % (namespaces[prefix], uri)
-                except KeyError:
-                    raise SyntaxError("prefix %r not found in prefix map" % prefix)
-            elif default_namespace:
-                yield token[0], "{%s}%s" % (default_namespace, tag)
-            else:
-                yield token
+        if tag and tag[0] != "{" and ":" in tag:
+            prefix, uri = tag.split(":", 1)
+            try:
+                if not namespaces:
+                    raise KeyError
+                yield token[0], "{%s}%s" % (namespaces[prefix], uri)
+            except KeyError:
+                raise SyntaxError("prefix %r not found in prefix map" % prefix)
+        elif tag and tag[0] != "{" and default_namespace:
+            yield token[0], "{%s}%s" % (default_namespace, tag)
         else:
             yield token
 
@@ -92,15 +89,15 @@ def prepare_child(next, token):
     tag = token[1]
     def select(result):
         for elem in result:
-            for e in elem.iterchildren(tag):
-                yield e
+            yield from elem.iterchildren(tag)
+
     return select
 
 def prepare_star(next, token):
     def select(result):
         for elem in result:
-            for e in elem.iterchildren('*'):
-                yield e
+            yield from elem.iterchildren('*')
+
     return select
 
 def prepare_self(next, token):
@@ -118,8 +115,8 @@ def prepare_descendant(next, token):
         raise SyntaxError("invalid descendant")
     def select(result):
         for elem in result:
-            for e in elem.iterdescendants(tag):
-                yield e
+            yield from elem.iterdescendants(tag)
+
     return select
 
 def prepare_parent(next, token):
@@ -192,7 +189,7 @@ def prepare_predicate(next, token):
                     if "".join(elem.itertext()) == value:
                         yield elem
         return select
-    if signature == "-" or signature == "-()" or signature == "-()-":
+    if signature in ["-", "-()", "-()-"]:
         # [index] or [last()] or [last()-index]
         if signature == "-":
             # [index]
@@ -327,7 +324,4 @@ def findall(elem, path, namespaces=None):
 
 def findtext(elem, path, default=None, namespaces=None):
     el = find(elem, path, namespaces)
-    if el is None:
-        return default
-    else:
-        return el.text or ''
+    return default if el is None else el.text or ''

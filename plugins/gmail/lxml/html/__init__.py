@@ -123,9 +123,12 @@ def _transform_result(typ, result):
 
 
 def _nons(tag):
-    if isinstance(tag, basestring):
-        if tag[0] == '{' and tag[1:len(XHTML_NAMESPACE)+1] == XHTML_NAMESPACE:
-            return tag.split('}')[-1]
+    if (
+        isinstance(tag, basestring)
+        and tag[0] == '{'
+        and tag[1 : len(XHTML_NAMESPACE) + 1] == XHTML_NAMESPACE
+    ):
+        return tag.split('}')[-1]
     return tag
 
 
@@ -172,9 +175,9 @@ class Classes(MutableSet):
         """
         if not value or re.search(r'\s', value):
             raise ValueError("Invalid class name: %r" % value)
-        classes = [name for name in self._get_class_value().split()
-                   if name != value]
-        if classes:
+        if classes := [
+            name for name in self._get_class_value().split() if name != value
+        ]:
             self._attributes['class'] = ' '.join(classes)
         elif 'class' in self._attributes:
             del self._attributes['class']
@@ -258,8 +261,7 @@ class HtmlMixin(object):
     @classes.setter
     def classes(self, classes):
         assert isinstance(classes, Classes)  # only allow "el.classes |= ..." etc.
-        value = classes._get_class_value()
-        if value:
+        if value := classes._get_class_value():
             self.set('class', value)
         elif self.get('class') is not None:
             del self.attrib['class']
@@ -306,10 +308,7 @@ class HtmlMixin(object):
         if not id:
             return None
         result = _label_xpath(self, id=id)
-        if not result:
-            return None
-        else:
-            return result[0]
+        return result[0] if result else None
 
     @label.setter
     def label(self, label):
@@ -569,15 +568,14 @@ class HtmlMixin(object):
                     ## http://www.w3.org/TR/html401/struct/objects.html#adef-valuetype
                     yield (el, 'value', el.get('value'), 0)
             elif tag == 'style' and el.text:
-                urls = [
+                if urls := [
                     # (start_pos, url)
                     _unquote_match(match.group(1), match.start(1))[::-1]
                     for match in _iter_css_urls(el.text)
-                    ] + [
+                ] + [
                     (match.start(1), match.group(1))
                     for match in _iter_css_imports(el.text)
-                    ]
-                if urls:
+                ]:
                     # sort by start pos to bring both match sets back into order
                     # and reverse the list to report correct positions despite
                     # modifications
@@ -585,8 +583,7 @@ class HtmlMixin(object):
                     for start, url in urls:
                         yield (el, None, url, start)
             if 'style' in attribs:
-                urls = list(_iter_css_urls(attribs['style']))
-                if urls:
+                if urls := list(_iter_css_urls(attribs['style'])):
                     # return in reversed order to simplify in-place modifications
                     for match in urls[::-1]:
                         url, start = _unquote_match(match.group(1), match.start(1))
@@ -662,20 +659,13 @@ class _MethodFunc(object):
                     "The keyword 'copy' can only be used with element inputs to %s, not a string input" % self.name)
             doc = fromstring(doc, **kw)
         else:
-            if 'copy' in kw:
-                make_a_copy = kw.pop('copy')
-            else:
-                make_a_copy = self.copy
+            make_a_copy = kw.pop('copy') if 'copy' in kw else self.copy
             if make_a_copy:
                 doc = copy.deepcopy(doc)
         meth = getattr(doc, self.name)
         result = meth(*args, **kw)
         # FIXME: this None test is a bit sloppy
-        if result is None:
-            # Then return what we got in
-            return _transform_result(result_type, doc)
-        else:
-            return result
+        return _transform_result(result_type, doc) if result is None else result
 
 
 find_rel_links = _MethodFunc('find_rel_links', copy=False)
@@ -789,9 +779,8 @@ def fragments_fromstring(html, no_leading_text=False, base_url=None,
             # can't use %-formatting in early Py3 versions
             html = ('<html><body>'.encode('ascii') + html +
                     '</body></html>'.encode('ascii'))
-    else:
-        if not _looks_like_full_html_unicode(html):
-            html = '<html><body>%s</body></html>' % html
+    elif not _looks_like_full_html_unicode(html):
+        html = f'<html><body>{html}</body></html>'
     doc = document_fromstring(html, parser=parser, base_url=base_url, **kw)
     assert _nons(doc.tag) == 'html'
     bodies = [e for e in doc if _nons(e.tag) == 'body']
@@ -848,8 +837,9 @@ def fragment_fromstring(html, create_parent=False, base_url=None,
         raise etree.ParserError('No elements found')
     if len(elements) > 1:
         raise etree.ParserError(
-            "Multiple elements found (%s)"
-            % ', '.join([_element_name(e) for e in elements]))
+            f"Multiple elements found ({', '.join([_element_name(e) for e in elements])})"
+        )
+
     el = elements[0]
     if el.tail and el.tail.strip():
         raise etree.ParserError(
@@ -876,11 +866,9 @@ def fromstring(html, base_url=None, parser=None, **kw):
     doc = document_fromstring(html, parser=parser, base_url=base_url, **kw)
     if is_full_html:
         return doc
-    # otherwise, lets parse it out...
-    bodies = doc.findall('body')
-    if not bodies:
-        bodies = doc.findall('{%s}body' % XHTML_NAMESPACE)
-    if bodies:
+    if bodies := doc.findall('body') or doc.findall(
+        '{%s}body' % XHTML_NAMESPACE
+    ):
         body = bodies[0]
         if len(bodies) > 1:
             # Somehow there are multiple bodies, which is bad, but just
@@ -897,10 +885,9 @@ def fromstring(html, base_url=None, parser=None, **kw):
                 other_body.drop_tree()
     else:
         body = None
-    heads = doc.findall('head')
-    if not heads:
-        heads = doc.findall('{%s}head' % XHTML_NAMESPACE)
-    if heads:
+    if heads := doc.findall('head') or doc.findall(
+        '{%s}head' % XHTML_NAMESPACE
+    ):
         # Well, we have some sort of structure, so lets keep it all
         head = heads[0]
         if len(heads) > 1:
@@ -919,10 +906,7 @@ def fromstring(html, base_url=None, parser=None, **kw):
     # Now we have a body which represents a bunch of tags which have the
     # content that was passed in.  We will create a fake container, which
     # is the body tag, except <body> implies too much structure.
-    if _contains_block_level_tag(body):
-        body.tag = 'div'
-    else:
-        body.tag = 'span'
+    body.tag = 'div' if _contains_block_level_tag(body) else 'span'
     return body
 
 
@@ -941,12 +925,7 @@ def parse(filename_or_url, parser=None, base_url=None, **kw):
 
 
 def _contains_block_level_tag(el):
-    # FIXME: I could do this with XPath, but would that just be
-    # unnecessarily slow?
-    for el in el.iter(etree.Element):
-        if _nons(el.tag) in defs.block_tags:
-            return True
-    return False
+    return any(_nons(el.tag) in defs.block_tags for el in el.iter(etree.Element))
 
 
 def _element_name(el):
@@ -1022,15 +1001,14 @@ class FormElement(HtmlElement):
             if not name or 'disabled' in el.attrib:
                 continue
             tag = _nons(el.tag)
-            if tag == 'textarea':
-                results.append((name, el.value))
-            elif tag == 'select':
+            if tag == 'select':
                 value = el.value
                 if el.multiple:
-                    for v in value:
-                        results.append((name, v))
+                    results.extend((name, v) for v in value)
                 elif value is not None:
                     results.append((name, el.value))
+            elif tag == 'textarea':
+                results.append((name, el.value))
             else:
                 assert tag == 'input', (
                     "Unexpected tag: %r" % el)
@@ -1050,10 +1028,7 @@ class FormElement(HtmlElement):
         """
         base_url = self.base_url
         action = self.get('action')
-        if base_url and action is not None:
-            return urljoin(base_url, action)
-        else:
-            return action
+        return urljoin(base_url, action) if base_url and action is not None else action
 
     @action.setter
     def action(self, value):
@@ -1112,10 +1087,7 @@ def submit_form(form, extra_values=None, open_http=None):
         values.extend(extra_values)
     if open_http is None:
         open_http = open_http_urllib
-    if form.action:
-        url = form.action
-    else:
-        url = form.base_url
+    url = form.action or form.base_url
     return open_http(form.method, url, values)
 
 
@@ -1129,10 +1101,7 @@ def open_http_urllib(method, url, values):
         from urllib.request import urlopen
         from urllib.parse import urlencode
     if method == 'GET':
-        if '?' in url:
-            url += '&'
-        else:
-            url += '?'
+        url += '&' if '?' in url else '?'
         url += urlencode(values)
         data = None
     else:
@@ -1163,9 +1132,7 @@ class FieldsDict(MutableMapping):
         return len(self.inputs)
 
     def __repr__(self):
-        return '<%s for form %s>' % (
-            self.__class__.__name__,
-            self.inputs.form._name())
+        return f'<{self.__class__.__name__} for form {self.inputs.form._name()}>'
 
 
 class InputGetter(object):
@@ -1191,40 +1158,34 @@ class InputGetter(object):
         self.form = form
 
     def __repr__(self):
-        return '<%s for form %s>' % (
-            self.__class__.__name__,
-            self.form._name())
+        return f'<{self.__class__.__name__} for form {self.form._name()}>'
 
     ## FIXME: there should be more methods, and it's unclear if this is
     ## a dictionary-like object or list-like object
 
     def __getitem__(self, name):
-        results = self._name_xpath(self.form, name=name)
-        if results:
-            type = results[0].get('type')
-            if type == 'radio' and len(results) > 1:
-                group = RadioGroup(results)
-                group.name = name
-                return group
-            elif type == 'checkbox' and len(results) > 1:
-                group = CheckboxGroup(results)
-                group.name = name
-                return group
-            else:
-                # I don't like throwing away elements like this
-                return results[0]
-        else:
+        if not (results := self._name_xpath(self.form, name=name)):
             raise KeyError(
                 "No input element with the name %r" % name)
+        type = results[0].get('type')
+        if type == 'radio' and len(results) > 1:
+            group = RadioGroup(results)
+            group.name = name
+            return group
+        elif type == 'checkbox' and len(results) > 1:
+            group = CheckboxGroup(results)
+            group.name = name
+            return group
+        else:
+            # I don't like throwing away elements like this
+            return results[0]
 
     def __contains__(self, name):
         results = self._name_xpath(self.form, name=name)
         return bool(results)
 
     def keys(self):
-        names = set()
-        for el in self:
-            names.add(el.name)
+        names = {el.name for el in self}
         if None in names:
             names.remove(None)
         return list(names)
@@ -1258,10 +1219,7 @@ class InputMixin(object):
 
     def __repr__(self):
         type_name = getattr(self, 'type', None)
-        if type_name:
-            type_name = ' type=%r' % type_name
-        else:
-            type_name = ''
+        type_name = ' type=%r' % type_name if type_name else ''
         return '<%s %x name=%r%s>' % (
             self.__class__.__name__, id(self), self.name, type_name)
 
@@ -1480,10 +1438,7 @@ class RadioGroup(list):
         Get/set the value, which checks the radio with that value (and
         unchecks any other value).
         """
-        for el in self:
-            if 'checked' in el.attrib:
-                return el.get('value')
-        return None
+        return next((el.get('value') for el in self if 'checked' in el.attrib), None)
 
     @value.setter
     def value(self, value):
@@ -1513,9 +1468,7 @@ class RadioGroup(list):
         return [el.get('value') for el in self]
 
     def __repr__(self):
-        return '%s(%s)' % (
-            self.__class__.__name__,
-            list.__repr__(self))
+        return f'{self.__class__.__name__}({list.__repr__(self)})'
 
 
 class CheckboxGroup(list):
@@ -1558,8 +1511,7 @@ class CheckboxGroup(list):
         return [el.get('value') for el in self]
 
     def __repr__(self):
-        return '%s(%s)' % (
-            self.__class__.__name__, list.__repr__(self))
+        return f'{self.__class__.__name__}({list.__repr__(self)})'
 
 
 class CheckboxValues(SetMixin):
@@ -1631,10 +1583,7 @@ class InputElement(InputMixin, HtmlElement):
         checked, this returns None.
         """
         if self.checkable:
-            if self.checked:
-                return self.get('value') or 'on'
-            else:
-                return None
+            return self.get('value') or 'on' if self.checked else None
         return self.get('value')
 
     @value.setter
@@ -1653,9 +1602,8 @@ class InputElement(InputMixin, HtmlElement):
     def value(self):
         if self.checkable:
             self.checked = False
-        else:
-            if 'value' in self.attrib:
-                del self.attrib['value']
+        elif 'value' in self.attrib:
+            del self.attrib['value']
 
     @property
     def type(self):
@@ -1716,17 +1664,15 @@ class LabelElement(HtmlElement):
         can't be found.
         """
         id = self.get('for')
-        if not id:
-            return None
-        return self.body.get_element_by_id(id)
+        return self.body.get_element_by_id(id) if id else None
 
     @for_element.setter
     def for_element(self, other):
-        id = other.get('id')
-        if not id:
+        if id := other.get('id'):
+            self.set('for', id)
+        else:
             raise TypeError(
                 "Element %r has no id attribute" % other)
-        self.set('for', id)
 
     @for_element.deleter
     def for_element(self):
@@ -1767,7 +1713,7 @@ def xhtml_to_html(xhtml):
         pass
     prefix = "{%s}" % XHTML_NAMESPACE
     prefix_len = len(prefix)
-    for el in xhtml.iter(prefix + "*"):
+    for el in xhtml.iter(f"{prefix}*"):
         el.tag = el.tag[prefix_len:]
 
 
@@ -1919,8 +1865,7 @@ def Element(*args, **kw):
 
     This can also be used for XHTML documents.
     """
-    v = html_parser.makeelement(*args, **kw)
-    return v
+    return html_parser.makeelement(*args, **kw)
 
 
 html_parser = HTMLParser()

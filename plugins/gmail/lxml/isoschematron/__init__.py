@@ -249,21 +249,17 @@ class Schematron(_etree._Validator):
         root = None
         try:
             if etree is not None:
-                if _etree.iselement(etree):
-                    root = etree
-                else:
-                    root = etree.getroot()
+                root = etree if _etree.iselement(etree) else etree.getroot()
             elif file is not None:
                 root = _etree.parse(file).getroot()
         except Exception:
             raise _etree.SchematronParseError(
-                "No tree or file given: %s" % sys.exc_info()[1])
+                f"No tree or file given: {sys.exc_info()[1]}"
+            )
+
         if root is None:
             raise ValueError("Empty tree")
-        if root.tag == _schematron_root:
-            schematron = root
-        else:
-            schematron = self._extract(root)
+        schematron = root if root.tag == _schematron_root else self._extract(root)
         if schematron is None:
             raise _etree.SchematronParseError(
                 "Document is not a schematron schema or schematron-extractable")
@@ -275,8 +271,9 @@ class Schematron(_etree._Validator):
             schematron = self._expand(schematron, **expand_params)
         if not schematron_schema_valid(schematron):
             raise _etree.SchematronParseError(
-                "invalid schematron schema: %s" %
-                schematron_schema_valid.error_log)
+                f"invalid schematron schema: {schematron_schema_valid.error_log}"
+            )
+
         if store_schematron:
             self._schematron = schematron
         # add new compile keyword args here if exposing them
@@ -296,8 +293,7 @@ class Schematron(_etree._Validator):
         result = self._validator(etree)
         if self._store_report:
             self._validation_report = result
-        errors = self._validation_errors(result)
-        if errors:
+        if errors := self._validation_errors(result):
             if _etree.iselement(etree):
                 fname = etree.getroottree().docinfo.URL or '<file>'
             else:

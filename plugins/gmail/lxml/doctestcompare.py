@@ -61,10 +61,7 @@ NOPARSE_MARKUP = doctest.register_optionflag('NOPARSE_MARKUP')
 OutputChecker = doctest.OutputChecker
 
 def strip(v):
-    if v is None:
-        return None
-    else:
-        return v.strip()
+    return None if v is None else v.strip()
 
 def norm_whitespace(v):
     return _norm_whitespace_re.sub(' ', v)
@@ -164,12 +161,9 @@ class LXMLOutputChecker(OutputChecker):
         if strip:
             want = norm_whitespace(want).strip()
             got = norm_whitespace(got).strip()
-        want = '^%s$' % re.escape(want)
+        want = f'^{re.escape(want)}$'
         want = want.replace(r'\.\.\.', '.*')
-        if re.search(want, got):
-            return True
-        else:
-            return False
+        return bool(re.search(want, got))
 
     def tag_compare(self, want, got):
         if want == 'any':
@@ -194,12 +188,12 @@ class LXMLOutputChecker(OutputChecker):
                 want_doc = parser(want)
             except etree.XMLSyntaxError:
                 e = sys.exc_info()[1]
-                errors.append('In example: %s' % e)
+                errors.append(f'In example: {e}')
             try:
                 got_doc = parser(got)
             except etree.XMLSyntaxError:
                 e = sys.exc_info()[1]
-                errors.append('In actual output: %s' % e)
+                errors.append(f'In actual output: {e}')
         if parser is None or errors:
             value = OutputChecker.output_difference(
                 self, example, got, optionflags)
@@ -209,32 +203,20 @@ class LXMLOutputChecker(OutputChecker):
             else:
                 return value
         html = parser is html_fromstring
-        diff_parts = []
-        diff_parts.append('Expected:')
-        diff_parts.append(self.format_doc(want_doc, html, 2))
-        diff_parts.append('Got:')
-        diff_parts.append(self.format_doc(got_doc, html, 2))
-        diff_parts.append('Diff:')
+        diff_parts = ['Expected:', self.format_doc(want_doc, html, 2), 'Got:']
+        diff_parts.extend((self.format_doc(got_doc, html, 2), 'Diff:'))
         diff_parts.append(self.collect_diff(want_doc, got_doc, html, 2))
         return '\n'.join(diff_parts)
 
     def html_empty_tag(self, el, html=True):
         if not html:
             return False
-        if el.tag not in self.empty_tags:
-            return False
-        if el.text or len(el):
-            # This shouldn't happen (contents in an empty tag)
-            return False
-        return True
+        return False if el.tag not in self.empty_tags else not el.text and not len(el)
 
     def format_doc(self, doc, html, indent, prefix=''):
         parts = []
         if not len(doc):
-            # No children...
-            parts.append(' '*indent)
-            parts.append(prefix)
-            parts.append(self.format_tag(doc))
+            parts.extend((' '*indent, prefix, self.format_tag(doc)))
             if not self.html_empty_tag(doc, html):
                 if strip(doc.text):
                     parts.append(self.format_text(doc.text))
@@ -243,24 +225,15 @@ class LXMLOutputChecker(OutputChecker):
                 parts.append(self.format_text(doc.tail))
             parts.append('\n')
             return ''.join(parts)
-        parts.append(' '*indent)
-        parts.append(prefix)
-        parts.append(self.format_tag(doc))
+        parts.extend((' '*indent, prefix, self.format_tag(doc)))
         if not self.html_empty_tag(doc, html):
             parts.append('\n')
             if strip(doc.text):
-                parts.append(' '*indent)
-                parts.append(self.format_text(doc.text))
-                parts.append('\n')
-            for el in doc:
-                parts.append(self.format_doc(el, html, indent+2))
-            parts.append(' '*indent)
-            parts.append(self.format_end_tag(doc))
-            parts.append('\n')
+                parts.extend((' '*indent, self.format_text(doc.text), '\n'))
+            parts.extend(self.format_doc(el, html, indent+2) for el in doc)
+            parts.extend((' '*indent, self.format_end_tag(doc), '\n'))
         if strip(doc.tail):
-            parts.append(' '*indent)
-            parts.append(self.format_text(doc.tail))
-            parts.append('\n')
+            parts.extend((' '*indent, self.format_text(doc.tail), '\n'))
         return ''.join(parts)
 
     def format_text(self, text, strip=True):
@@ -271,40 +244,36 @@ class LXMLOutputChecker(OutputChecker):
         return html_escape(text, 1)
 
     def format_tag(self, el):
-        attrs = []
         if isinstance(el, etree.CommentBase):
             # FIXME: probably PIs should be handled specially too?
             return '<!--'
-        for name, value in sorted(el.attrib.items()):
-            attrs.append('%s="%s"' % (name, self.format_text(value, False)))
-        if not attrs:
-            return '<%s>' % el.tag
-        return '<%s %s>' % (el.tag, ' '.join(attrs))
+        attrs = [
+            '%s="%s"' % (name, self.format_text(value, False))
+            for name, value in sorted(el.attrib.items())
+        ]
+
+        return f"<{el.tag} {' '.join(attrs)}>" if attrs else f'<{el.tag}>'
     
     def format_end_tag(self, el):
-        if isinstance(el, etree.CommentBase):
-            # FIXME: probably PIs should be handled specially too?
-            return '-->'
-        return '</%s>' % el.tag
+        return '-->' if isinstance(el, etree.CommentBase) else f'</{el.tag}>'
 
     def collect_diff(self, want, got, html, indent):
         parts = []
         if not len(want) and not len(got):
-            parts.append(' '*indent)
-            parts.append(self.collect_diff_tag(want, got))
+            parts.extend((' '*indent, self.collect_diff_tag(want, got)))
             if not self.html_empty_tag(got, html):
-                parts.append(self.collect_diff_text(want.text, got.text))
-                parts.append(self.collect_diff_end_tag(want, got))
-            parts.append(self.collect_diff_text(want.tail, got.tail))
-            parts.append('\n')
+                parts.extend(
+                    (
+                        self.collect_diff_text(want.text, got.text),
+                        self.collect_diff_end_tag(want, got),
+                    )
+                )
+
+            parts.extend((self.collect_diff_text(want.tail, got.tail), '\n'))
             return ''.join(parts)
-        parts.append(' '*indent)
-        parts.append(self.collect_diff_tag(want, got))
-        parts.append('\n')
+        parts.extend((' '*indent, self.collect_diff_tag(want, got), '\n'))
         if strip(want.text) or strip(got.text):
-            parts.append(' '*indent)
-            parts.append(self.collect_diff_text(want.text, got.text))
-            parts.append('\n')
+            parts.extend((' '*indent, self.collect_diff_text(want.text, got.text), '\n'))
         want_children = list(want)
         got_children = list(got)
         while want_children or got_children:
@@ -316,55 +285,49 @@ class LXMLOutputChecker(OutputChecker):
                 continue
             parts.append(self.collect_diff(
                 want_children.pop(0), got_children.pop(0), html, indent+2))
-        parts.append(' '*indent)
-        parts.append(self.collect_diff_end_tag(want, got))
-        parts.append('\n')
+        parts.extend((' '*indent, self.collect_diff_end_tag(want, got), '\n'))
         if strip(want.tail) or strip(got.tail):
-            parts.append(' '*indent)
-            parts.append(self.collect_diff_text(want.tail, got.tail))
-            parts.append('\n')
+            parts.extend((' '*indent, self.collect_diff_text(want.tail, got.tail), '\n'))
         return ''.join(parts)
 
     def collect_diff_tag(self, want, got):
-        if not self.tag_compare(want.tag, got.tag):
-            tag = '%s (got: %s)' % (want.tag, got.tag)
-        else:
-            tag = got.tag
+        tag = (
+            got.tag
+            if self.tag_compare(want.tag, got.tag)
+            else f'{want.tag} (got: {got.tag})'
+        )
+
         attrs = []
         any = want.tag == 'any' or 'any' in want.attrib
         for name, value in sorted(got.attrib.items()):
-            if name not in want.attrib and not any:
-                attrs.append('+%s="%s"' % (name, self.format_text(value, False)))
-            else:
-                if name in want.attrib:
-                    text = self.collect_diff_text(want.attrib[name], value, False)
-                else:
-                    text = self.format_text(value, False)
+            if name in want.attrib or any:
+                text = (
+                    self.collect_diff_text(want.attrib[name], value, False)
+                    if name in want.attrib
+                    else self.format_text(value, False)
+                )
+
                 attrs.append('%s="%s"' % (name, text))
+            else:
+                attrs.append('+%s="%s"' % (name, self.format_text(value, False)))
         if not any:
-            for name, value in sorted(want.attrib.items()):
-                if name in got.attrib:
-                    continue
-                attrs.append('-%s="%s"' % (name, self.format_text(value, False)))
-        if attrs:
-            tag = '<%s %s>' % (tag, ' '.join(attrs))
-        else:
-            tag = '<%s>' % tag
+            attrs.extend(
+                '-%s="%s"' % (name, self.format_text(value, False))
+                for name, value in sorted(want.attrib.items())
+                if name not in got.attrib
+            )
+
+        tag = f"<{tag} {' '.join(attrs)}>" if attrs else f'<{tag}>'
         return tag
 
     def collect_diff_end_tag(self, want, got):
-        if want.tag != got.tag:
-            tag = '%s (got: %s)' % (want.tag, got.tag)
-        else:
-            tag = got.tag
-        return '</%s>' % tag
+        tag = f'{want.tag} (got: {got.tag})' if want.tag != got.tag else got.tag
+        return f'</{tag}>'
 
     def collect_diff_text(self, want, got, strip=True):
         if self.text_compare(want, got, strip):
-            if not got:
-                return ''
-            return self.format_text(got, strip)
-        text = '%s (got: %s)' % (want, got)
+            return self.format_text(got, strip) if got else ''
+        text = f'{want} (got: {got})'
         return self.format_text(text, strip)
 
 class LHTMLOutputChecker(LXMLOutputChecker):
@@ -378,10 +341,7 @@ def install(html=False):
     If html is true, then by default the HTML parser will be used;
     otherwise the XML parser is used.
     """
-    if html:
-        doctest.OutputChecker = LHTMLOutputChecker
-    else:
-        doctest.OutputChecker = LXMLOutputChecker
+    doctest.OutputChecker = LHTMLOutputChecker if html else LXMLOutputChecker
 
 def temp_install(html=False, del_module=None):
     """
@@ -391,10 +351,7 @@ def temp_install(html=False, del_module=None):
     If html is true, then by default the HTML parser will be used;
     otherwise the XML parser is used.
     """
-    if html:
-        Checker = LHTMLOutputChecker
-    else:
-        Checker = LXMLOutputChecker
+    Checker = LHTMLOutputChecker if html else LXMLOutputChecker
     frame = _find_doctest_frame()
     dt_self = frame.f_locals['self']
     checker = Checker()

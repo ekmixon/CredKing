@@ -137,7 +137,10 @@ class SessionRedirectMixin(object):
                 resp.raw.read(decode_content=False)
 
             if len(resp.history) >= self.max_redirects:
-                raise TooManyRedirects('Exceeded %s redirects.' % self.max_redirects, response=resp)
+                raise TooManyRedirects(
+                    f'Exceeded {self.max_redirects} redirects.', response=resp
+                )
+
 
             # Release the connection back into the pool.
             resp.close()
@@ -145,7 +148,7 @@ class SessionRedirectMixin(object):
             # Handle redirection without scheme (see: RFC 1808 Section 4)
             if url.startswith('//'):
                 parsed_rurl = urlparse(resp.url)
-                url = '%s:%s' % (to_native_string(parsed_rurl.scheme), url)
+                url = f'{to_native_string(parsed_rurl.scheme)}:{url}'
 
             # The scheme should be lower case...
             parsed = urlparse(url)
@@ -154,10 +157,11 @@ class SessionRedirectMixin(object):
             # Facilitate relative 'location' headers, as allowed by RFC 7231.
             # (e.g. '/path/to/resource' instead of 'http://domain.tld/path/to/resource')
             # Compliant with RFC3986, we percent encode the url.
-            if not parsed.netloc:
-                url = urljoin(resp.url, requote_uri(url))
-            else:
-                url = requote_uri(url)
+            url = (
+                requote_uri(url)
+                if parsed.netloc
+                else urljoin(resp.url, requote_uri(url))
+            )
 
             prepared_request.url = to_native_string(url)
 
@@ -271,9 +275,7 @@ class SessionRedirectMixin(object):
         if self.trust_env and not bypass_proxy:
             environ_proxies = get_environ_proxies(url, no_proxy=no_proxy)
 
-            proxy = environ_proxies.get(scheme, environ_proxies.get('all'))
-
-            if proxy:
+            if proxy := environ_proxies.get(scheme, environ_proxies.get('all')):
                 new_proxies.setdefault(scheme, proxy)
 
         if 'Proxy-Authorization' in headers:
@@ -504,10 +506,8 @@ class Session(SessionRedirectMixin):
             'timeout': timeout,
             'allow_redirects': allow_redirects,
         }
-        send_kwargs.update(settings)
-        resp = self.send(prep, **send_kwargs)
-
-        return resp
+        send_kwargs |= settings
+        return self.send(prep, **send_kwargs)
 
     def get(self, url, **kwargs):
         r"""Sends a GET request. Returns :class:`Response` object.
@@ -637,7 +637,7 @@ class Session(SessionRedirectMixin):
         gen = self.resolve_redirects(r, request, **kwargs)
 
         # Resolve redirects if allowed.
-        history = [resp for resp in gen] if allow_redirects else []
+        history = list(gen) if allow_redirects else []
 
         # Shuffle things around if there's history.
         if history:
@@ -719,8 +719,7 @@ class Session(SessionRedirectMixin):
             self.adapters[key] = self.adapters.pop(key)
 
     def __getstate__(self):
-        state = dict((attr, getattr(self, attr, None)) for attr in self.__attrs__)
-        return state
+        return {attr: getattr(self, attr, None) for attr in self.__attrs__}
 
     def __setstate__(self, state):
         for attr, value in state.items():

@@ -56,10 +56,10 @@ class Form(object):
         """
 
         for (name, value) in data.items():
-            i = self.form.find("input", {"name": name})
-            if not i:
-                raise InvalidFormMethod("No input field named " + name)
-            i["value"] = value
+            if i := self.form.find("input", {"name": name}):
+                i["value"] = value
+            else:
+                raise InvalidFormMethod(f"No input field named {name}")
 
     def uncheck_all(self, name):
         """Remove the *checked*-attribute of all input elements with
@@ -86,7 +86,7 @@ class Form(object):
                 continue
             except InvalidFormMethod:
                 pass
-            raise LinkNotFoundError("No input checkbox/radio named " + name)
+            raise LinkNotFoundError(f"No input checkbox/radio named {name}")
 
     def set_checkbox(self, data, uncheck_other_boxes=True):
         """Set the *checked*-attribute of input elements of type "checkbox"
@@ -106,7 +106,7 @@ class Form(object):
             checkboxes = self.form.find_all("input", {"name": name},
                                             type="checkbox")
             if not checkboxes:
-                raise InvalidFormMethod("No input checkbox named " + name)
+                raise InvalidFormMethod(f"No input checkbox named {name}")
 
             # uncheck if requested
             if uncheck_other_boxes:
@@ -132,10 +132,7 @@ class Form(object):
                             del checkbox.attrs["checked"]
                         break
                 else:
-                    raise LinkNotFoundError(
-                        "No input checkbox named %s with choice %s" %
-                        (name, choice)
-                    )
+                    raise LinkNotFoundError(f"No input checkbox named {name} with choice {choice}")
 
     def set_radio(self, data):
         """Set the *checked*-attribute of input elements of type "radio"
@@ -149,7 +146,7 @@ class Form(object):
         for (name, value) in data.items():
             radios = self.form.find_all("input", {"name": name}, type="radio")
             if not radios:
-                raise InvalidFormMethod("No input radio named " + name)
+                raise InvalidFormMethod(f"No input radio named {name}")
 
             # only one radio button can be checked
             self.uncheck_all(name)
@@ -160,9 +157,7 @@ class Form(object):
                     radio["checked"] = ""
                     break
             else:
-                raise LinkNotFoundError(
-                    "No input radio named %s with choice %s" % (name, value)
-                )
+                raise LinkNotFoundError(f"No input radio named {name} with choice {value}")
 
     def set_textarea(self, data):
         """Set the *string*-attribute of the first textarea element
@@ -173,10 +168,10 @@ class Form(object):
             its *string*-attribute set to ``value``.
         """
         for (name, value) in data.items():
-            t = self.form.find("textarea", {"name": name})
-            if not t:
-                raise InvalidFormMethod("No textarea named " + name)
-            t.string = value
+            if t := self.form.find("textarea", {"name": name}):
+                t.string = value
+            else:
+                raise InvalidFormMethod(f"No textarea named {name}")
 
     def set_select(self, data):
         """Set the *selected*-attribute of the first option element
@@ -192,7 +187,7 @@ class Form(object):
         for (name, value) in data.items():
             select = self.form.find("select", {"name": name})
             if not select:
-                raise InvalidFormMethod("No select named " + name)
+                raise InvalidFormMethod(f"No select named {name}")
 
             # Deselect all options first
             for option in select.find_all("option"):
@@ -248,14 +243,14 @@ class Form(object):
         """
         for func in ("checkbox", "radio", "input", "textarea", "select"):
             try:
-                getattr(self, "set_" + func)({name: value})
+                getattr(self, f"set_{func}")({name: value})
                 return
             except InvalidFormMethod:
                 pass
         if force:
             self.new_control('text', name, value=value)
             return
-        raise LinkNotFoundError("No valid element named " + name)
+        raise LinkNotFoundError(f"No valid element named {name}")
 
     def new_control(self, type, name, value, **kwargs):
         """Add a new input element to the form.

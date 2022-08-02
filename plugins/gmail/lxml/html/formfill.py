@@ -18,10 +18,24 @@ class FormNotFound(LookupError):
     """
     Raised when no form can be found
     """
-
 _form_name_xpath = XPath('descendant-or-self::form[name=$name]|descendant-or-self::x:form[name=$name]', namespaces={'x':XHTML_NAMESPACE})
-_input_xpath = XPath('|'.join(['descendant-or-self::'+_tag for _tag in ('input','select','textarea','x:input','x:select','x:textarea')]),
-                               namespaces={'x':XHTML_NAMESPACE})
+_input_xpath = XPath(
+    '|'.join(
+        [
+            f'descendant-or-self::{_tag}'
+            for _tag in (
+                'input',
+                'select',
+                'textarea',
+                'x:input',
+                'x:select',
+                'x:textarea',
+            )
+        ]
+    ),
+    namespaces={'x': XHTML_NAMESPACE},
+)
+
 _label_for_xpath = XPath('//label[@for=$for_id]|//x:label[@for=$for_id]',
                                namespaces={'x':XHTML_NAMESPACE})
 _name_xpath = XPath('descendant-or-self::*[@name=$name]')
@@ -37,10 +51,7 @@ def fill_form(
 
 def fill_form_html(html, values, form_id=None, form_index=None):
     result_type = type(html)
-    if isinstance(html, basestring):
-        doc = fromstring(html)
-    else:
-        doc = copy.deepcopy(html)
+    doc = fromstring(html) if isinstance(html, basestring) else copy.deepcopy(html)
     fill_form(doc, values, form_id=form_id, form_index=form_index)
     return _transform_result(result_type, doc)
 
@@ -79,9 +90,7 @@ def _takes_multiple(input):
         # FIXME: multiple="0"?
         return True
     type = input.get('type', '').lower()
-    if type in ('radio', 'checkbox'):
-        return True
-    return False
+    return type in ('radio', 'checkbox')
 
 def _fill_multiple(input, value):
     type = input.get('type', '').lower()
@@ -114,16 +123,14 @@ def _fill_multiple(input, value):
 def _check(el, check):
     if check:
         el.set('checked', '')
-    else:
-        if 'checked' in el.attrib:
-            del el.attrib['checked']
+    elif 'checked' in el.attrib:
+        del el.attrib['checked']
 
 def _select(el, select):
     if select:
         el.set('selected', '')
-    else:
-        if 'selected' in el.attrib:
-            del el.attrib['selected']
+    elif 'selected' in el.attrib:
+        del el.attrib['selected']
 
 def _fill_single(input, value):
     if _nons(input.tag) == 'textarea':
@@ -142,13 +149,12 @@ def _find_form(el, form_id=None, form_index=None):
         form = el.get_element_by_id(form_id)
         if form is not None:
             return form
-        forms = _form_name_xpath(el, name=form_id)
-        if forms:
+        if forms := _form_name_xpath(el, name=form_id):
             return forms[0]
         else:
             raise FormNotFound(
                 "No form with the name or id of %r (forms: %s)"
-                % (id, ', '.join(_find_form_ids(el))))               
+                % (id, ', '.join(_find_form_ids(el))))
     if form_index is not None:
         forms = _forms_xpath(el)
         try:
@@ -166,14 +172,13 @@ def _find_form_ids(el):
     for index, form in enumerate(forms):
         if form.get('id'):
             if form.get('name'):
-                yield '%s or %s' % (form.get('id'),
-                                     form.get('name'))
+                yield f"{form.get('id')} or {form.get('name')}"
             else:
                 yield form.get('id')
         elif form.get('name'):
             yield form.get('name')
         else:
-            yield '(unnamed form %s)' % index
+            yield f'(unnamed form {index})'
 
 ############################################################
 ## Error filling
@@ -190,8 +195,7 @@ class DefaultErrorCreator(object):
     def __init__(self, **kw):
         for name, value in kw.items():
             if not hasattr(self, name):
-                raise TypeError(
-                    "Unexpected keyword argument: %s" % name)
+                raise TypeError(f"Unexpected keyword argument: {name}")
             setattr(self, name, value)
 
     def __call__(self, el, is_block, message):
@@ -247,23 +251,16 @@ def insert_errors(
 
 def insert_errors_html(html, values, **kw):
     result_type = type(html)
-    if isinstance(html, basestring):
-        doc = fromstring(html)
-    else:
-        doc = copy.deepcopy(html)
+    doc = fromstring(html) if isinstance(html, basestring) else copy.deepcopy(html)
     insert_errors(doc, values, **kw)
     return _transform_result(result_type, doc)
 
 def _insert_error(el, error, error_class, error_creator):
-    if _nons(el.tag) in defs.empty_tags or _nons(el.tag) == 'textarea':
-        is_block = False
-    else:
-        is_block = True
+    is_block = _nons(el.tag) not in defs.empty_tags and _nons(el.tag) != 'textarea'
     if _nons(el.tag) != 'form' and error_class:
         _add_class(el, error_class)
     if el.get('id'):
-        labels = _label_for_xpath(el, for_id=el.get('id'))
-        if labels:
+        if labels := _label_for_xpath(el, for_id=el.get('id')):
             for label in labels:
                 _add_class(label, error_class)
     error_creator(el, is_block, error)
